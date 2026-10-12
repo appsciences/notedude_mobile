@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:notedude_mobile/capture.dart';
 import 'package:notedude_mobile/main.dart';
+import 'package:notedude_mobile/transcription.dart';
 
 class FakeRecorder implements VoiceRecorder {
   @override
@@ -14,6 +15,16 @@ class FakeRecorder implements VoiceRecorder {
   Future<String> start() async => '/tmp/capture.m4a';
   @override
   Future<String?> stop() async => '/tmp/capture.m4a';
+}
+
+class FakeTranscriber implements TranscriptionProvider {
+  @override
+  Future<void> dispose() async {}
+  @override
+  Future<String> transcribe(
+    String audioPath, {
+    void Function(TranscriptionProgress progress)? onProgress,
+  }) async => '';
 }
 
 class MemoryStore implements CaptureStore {
@@ -40,7 +51,11 @@ void main() {
   testWidgets('records, reviews, and saves a local capture', (tester) async {
     final store = MemoryStore();
     await tester.pumpWidget(
-      NoteDudeApp(recorder: FakeRecorder(), store: store),
+      NoteDudeApp(
+        recorder: FakeRecorder(),
+        store: store,
+        transcriber: FakeTranscriber(),
+      ),
     );
     await tester.pump();
 
