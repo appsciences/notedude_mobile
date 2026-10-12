@@ -143,10 +143,20 @@ Conflicts follow NoteDude's existing field-level-write principle: mobile should 
 - Application ID / bundle ID is `com.notedude.app`. Android and iOS apps are registered in `notedude2`. Each developer machine's debug keystore SHA-1, and the release/Play App Signing SHA-1s, must be added to the Android app in Firebase or Google sign-in fails with a configuration error.
 - `google-services.json` and `GoogleService-Info.plist` are client identifiers, not secrets, and are committed.
 
+## Sync to NoteDude
+
+- Sync uses the NoteDude MCP service (`https://notedude2-mcp.web.app/mcp`), tool `create_audio_note`. The app sends the on-device `transcript` (used as written, so the free tier needs no server transcription), the task tag in `tags`, and the original recording (`audio_base64`, `mime_type`) when it is at most 20 MiB. Larger or missing audio is dropped and the text still syncs.
+- Authentication: the app registers once as an OAuth client (`/oauth/register`, cached in app documents), then trades the Firebase ID token for an MCP access token with the token-exchange grant on `/oauth/token` (server issue appsciences/notedude_mcp#27). Refresh tokens are deliberately not stored; the access token lives in memory and is re-exchanged on expiry or a 401.
+- A capture is marked `synced` (with its `noteId`) only after the server confirms it. A failure marks it `failed` with the reason, keeps it in the outbox, and stops the run; the next run retries. One run at a time; overlapping triggers join it.
+- Triggers: saving while signed in, app start while signed in, and "Sync now" in the account menu. After signing in with a signed-out backlog the app asks "Sync N saved notes to <account>?" before uploading.
+- Limits surfaced to the user: 30 audio notes per day, 600 requests per hour (server side).
+- Known limitation: `create_audio_note` has no idempotency key. If a response is lost after the server created the note, a retry creates a duplicate. The original filename carries the recording's file name to help find these; a server-side key is the proper fix.
+- Paid tier: the server decides the plan from `users/{uid}.plan` (Admin-only). Sending audio without a transcript is the paid server-transcription path and is not used by the free tier.
+
 ## Delivery slices
 
 1. **Local capture foundation (current):** recorder, explicit stop/pause, editable note/task draft, durable local outbox.
-2. **Identity and NoteDude sync (sign-in done, sync pending):** FlutterFire setup, Google sign-in, Firestore-compatible create, Storage upload, retries and sync status. This requires registering Android/iOS apps in Firebase and updating NoteDude security rules.
+2. **Identity and NoteDude sync (done):** FlutterFire setup, Google sign-in, Firestore-compatible create, Storage upload, retries and sync status. This requires registering Android/iOS apps in Firebase and updating NoteDude security rules.
 3. **Transcription:** 
    - **3a. On-device Whisper (free release, in progress):** provider interface, one-time model download with progress, editable result, failure keeps audio.
    - **3b. ChatGPT in-app purchase (paid tier):** purchase and entitlement, authenticated server endpoint, progress and retry, audio playback and deletion.

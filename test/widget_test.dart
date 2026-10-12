@@ -34,7 +34,14 @@ class MemoryStore implements CaptureStore {
   @override
   Future<List<VoiceCapture>> load() async => List.of(captures);
   @override
-  Future<void> save(VoiceCapture capture) async => captures.insert(0, capture);
+  Future<void> save(VoiceCapture capture) async {
+    final index = captures.indexWhere((item) => item.id == capture.id);
+    if (index == -1) {
+      captures.insert(0, capture);
+    } else {
+      captures[index] = capture;
+    }
+  }
 }
 
 void main() {
@@ -57,7 +64,8 @@ void main() {
         recorder: FakeRecorder(),
         store: store,
         transcriber: FakeTranscriber(),
-        auth: FakeAuth(user: FakeAuth.person),
+        auth: FakeAuth(),
+        api: FakeNoteApi(),
       ),
     );
     await tester.pump();
@@ -84,6 +92,7 @@ void main() {
         store: MemoryStore(),
         transcriber: FakeTranscriber(),
         auth: FakeAuth(user: FakeAuth.person),
+        api: FakeNoteApi(),
       ),
     );
     await tester.pump();
