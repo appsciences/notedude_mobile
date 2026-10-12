@@ -6,6 +6,9 @@ import 'package:record/record.dart';
 
 enum CaptureKind { note, task }
 
+/// `failed` keeps the capture in the outbox; it is retried on the next run.
+enum SyncState { savedLocally, synced, failed }
+
 class VoiceCapture {
   const VoiceCapture({
     required this.id,
@@ -15,6 +18,10 @@ class VoiceCapture {
     required this.text,
     required this.kind,
     this.taskTag = '#tasks-inbox',
+    this.syncState = SyncState.savedLocally,
+    this.noteId,
+    this.syncError,
+    this.syncedAt,
   });
 
   final String id;
@@ -24,6 +31,45 @@ class VoiceCapture {
   final String text;
   final CaptureKind kind;
   final String taskTag;
+  final SyncState syncState;
+
+  /// The NoteDude note this capture became, once synced.
+  final String? noteId;
+  final String? syncError;
+  final DateTime? syncedAt;
+
+  VoiceCapture copyWith({
+    DateTime? createdAt,
+    String? text,
+    SyncState? syncState,
+    String? noteId,
+    String? syncError,
+    bool clearSyncError = false,
+    DateTime? syncedAt,
+  }) => VoiceCapture(
+    id: id,
+    createdAt: createdAt ?? this.createdAt,
+    audioPath: audioPath,
+    duration: duration,
+    text: text ?? this.text,
+    kind: kind,
+    taskTag: taskTag,
+    syncState: syncState ?? this.syncState,
+    noteId: noteId ?? this.noteId,
+    syncError: clearSyncError ? null : (syncError ?? this.syncError),
+    syncedAt: syncedAt ?? this.syncedAt,
+  );
+
+  /// The note text to sync: what the user wrote, or a placeholder so a
+  /// capture with only audio still becomes a findable note.
+  String get syncText {
+    final trimmed = text.trim();
+    return trimmed.isEmpty ? 'Voice note ${createdAt.toLocal()}' : trimmed;
+  }
+
+  /// Tags sent alongside the text; the server does not repeat one that is
+  /// already in the text.
+  List<String> get syncTags => kind == CaptureKind.task ? [taskTag] : const [];
 
   String get noteContent {
     final trimmed = text.trim();
@@ -41,7 +87,10 @@ class VoiceCapture {
     'text': text,
     'kind': kind.name,
     'taskTag': taskTag,
-    'syncState': 'savedLocally',
+    'syncState': syncState.name,
+    'noteId': ?noteId,
+    'syncError': ?syncError,
+    if (syncedAt != null) 'syncedAt': syncedAt!.toUtc().toIso8601String(),
   };
 
   factory VoiceCapture.fromJson(Map<String, dynamic> json) => VoiceCapture(
@@ -52,6 +101,14 @@ class VoiceCapture {
     text: json['text'] as String? ?? '',
     kind: CaptureKind.values.byName(json['kind'] as String? ?? 'note'),
     taskTag: json['taskTag'] as String? ?? '#tasks-inbox',
+    syncState:
+        SyncState.values.asNameMap()[json['syncState']] ??
+        SyncState.savedLocally,
+    noteId: json['noteId'] as String?,
+    syncError: json['syncError'] as String?,
+    syncedAt: json['syncedAt'] == null
+        ? null
+        : DateTime.parse(json['syncedAt'] as String),
   );
 }
 

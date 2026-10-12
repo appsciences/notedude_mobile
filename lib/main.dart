@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'auth.dart';
 import 'capture.dart';
+import 'sync.dart';
 import 'transcription.dart';
 
 Future<void> main() async {
@@ -45,6 +46,7 @@ class NoteDudeApp extends StatelessWidget {
     this.store,
     this.transcriber,
     this.auth,
+    this.api,
   });
 
   final VoiceRecorder? recorder;
@@ -52,8 +54,13 @@ class NoteDudeApp extends StatelessWidget {
   final TranscriptionProvider? transcriber;
   final AuthService? auth;
 
+  /// Defaults to the production NoteDude service; tests pass a fake.
+  final NoteDudeApi? api;
+
   @override
   Widget build(BuildContext context) {
+    final resolvedAuth = auth ?? FirebaseAuthService();
+    final resolvedStore = store ?? LocalCaptureStore();
     return MaterialApp(
       title: 'NoteDude',
       debugShowCheckedModeBanner: false,
@@ -67,10 +74,15 @@ class NoteDudeApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: _AppRoot(
-        auth: auth ?? FirebaseAuthService(),
+        auth: resolvedAuth,
         recorder: recorder ?? DeviceVoiceRecorder(),
-        store: store ?? LocalCaptureStore(),
+        store: resolvedStore,
         transcriber: transcriber ?? WhisperTranscriptionProvider(),
+        sync: SyncService(
+          store: resolvedStore,
+          api: api ?? HttpNoteDudeApi(auth: resolvedAuth),
+          auth: resolvedAuth,
+        ),
       ),
     );
   }
@@ -84,12 +96,14 @@ class _AppRoot extends StatelessWidget {
     required this.recorder,
     required this.store,
     required this.transcriber,
+    required this.sync,
   });
 
   final AuthService auth;
   final VoiceRecorder recorder;
   final CaptureStore store;
   final TranscriptionProvider transcriber;
+  final SyncService sync;
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +114,7 @@ class _AppRoot extends StatelessWidget {
         recorder: recorder,
         store: store,
         transcriber: transcriber,
+        sync: sync,
         account: snapshot.data,
         onSignIn: auth.signInWithGoogle,
         onSignOut: auth.signOut,
@@ -132,6 +147,7 @@ class CaptureScreen extends StatefulWidget {
     required this.recorder,
     required this.store,
     required this.transcriber,
+    required this.sync,
     this.account,
     this.onSignIn,
     this.onSignOut,
@@ -140,6 +156,7 @@ class CaptureScreen extends StatefulWidget {
   final VoiceRecorder recorder;
   final CaptureStore store;
   final TranscriptionProvider transcriber;
+  final SyncService sync;
   final AuthUser? account;
   final Future<void> Function()? onSignIn;
   final Future<void> Function()? onSignOut;
@@ -164,7 +181,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
   DateTime? _startedAt;
   Duration _duration = Duration.zero;
   Timer? _timer;
-  int _savedCount = 0;
+  // Captures not yet confirmed by NoteDude (saved locally or failed).
+  int _pending = 0;
+  bool _syncing = false;
   String? _message;
   // Bumped whenever a capture ends or restarts so a slow transcription of an
   // earlier recording can never write into a different capture.
@@ -177,7 +196,84 @@ class _CaptureScreenState extends State<CaptureScreen> {
   void initState() {
     super.initState();
     widget.store.load().then((captures) {
-      if (mounted) setState(() => _savedCount = captures.length);
+      if (!mounted) return;
+      setState(() => _pending = _pendingIn(captures));
+      // A signed-in person's backlog goes up without asking: they already
+      // chose this account.
+      if (widget.account != null && _pending > 0) unawaited(_syncNow());
+    });
+  }
+
+  @override
+  void didUpdateWidget(CaptureScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Notes captured while signed out have no owner yet, so confirm which
+    // account receives them rather than uploading silently.
+    if (oldWidget.account == null && widget.account != null && _pending > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_offerSync());
+      });
+    }
+  }
+
+  static int _pendingIn(List<VoiceCapture> captures) =>
+      captures.where((c) => c.syncState != SyncState.synced).length;
+
+  Future<void> _offerSync() async {
+    final account = widget.account;
+    if (account == null || _pending == 0) return;
+    final count = _pending;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sync saved notes?'),
+        content: Text(
+          count == 1
+              ? 'Send 1 saved note to ${account.label}?'
+              : 'Send $count saved notes to ${account.label}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sync'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) await _syncNow();
+  }
+
+  Future<void> _syncNow() async {
+    if (_syncing || widget.account == null) return;
+    setState(() {
+      _syncing = true;
+      _message = 'Syncing to NoteDude…';
+    });
+    SyncReport report;
+    try {
+      report = await widget.sync.syncPending();
+    } catch (error) {
+      report = SyncReport(failed: 1, error: '$error');
+    }
+    final pending = await widget.sync.pendingCount();
+    if (!mounted) return;
+    setState(() {
+      _syncing = false;
+      _pending = pending;
+      if (report.failed > 0) {
+        _message =
+            'Saved locally · sync failed: ${report.error}. It will retry.';
+      } else if (report.synced > 0) {
+        _message = report.synced == 1
+            ? 'Synced to NoteDude'
+            : 'Synced ${report.synced} notes to NoteDude';
+      } else {
+        _message = null;
+      }
     });
   }
 
@@ -311,17 +407,18 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() {
         _transcribing = false;
         _progress = null;
-        _savedCount = captures.length;
+        _pending = _pendingIn(captures);
         _stage = _CaptureStage.ready;
         _message = widget.account == null
             ? 'Saved locally · sign in to sync to NoteDude'
-            : 'Saved locally · waiting for NoteDude sync';
+            : 'Saved · syncing to NoteDude…';
         _audioPath = null;
         _duration = Duration.zero;
         _kind = CaptureKind.note;
         _taskTag = taskTags.first;
         _text.clear();
       });
+      if (widget.account != null) unawaited(_syncNow());
     } catch (error) {
       setState(() {
         _stage = _CaptureStage.review;
@@ -366,6 +463,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
               ),
               onSelected: (value) {
                 if (value == 'signin') _signIn();
+                if (value == 'sync') _syncNow();
                 if (value == 'signout') widget.onSignOut?.call();
               },
               itemBuilder: (context) => widget.account == null
@@ -383,6 +481,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         enabled: false,
                         child: Text(widget.account!.label),
                       ),
+                      if (_pending > 0)
+                        PopupMenuItem<String>(
+                          value: 'sync',
+                          enabled: !_syncing,
+                          child: const Text('Sync now'),
+                        ),
                       const PopupMenuItem<String>(
                         value: 'signout',
                         child: Text('Sign out'),
@@ -393,7 +497,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             padding: const EdgeInsets.only(right: 16),
             child: Center(
               child: Text(
-                '$_savedCount OUTBOX',
+                '$_pending OUTBOX',
                 style: const TextStyle(fontFamily: 'monospace'),
               ),
             ),
@@ -578,9 +682,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.save_outlined),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 14),
-            child: Text('Save locally'),
+          label: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Text(
+              widget.account == null ? 'Save locally' : 'Save & sync',
+            ),
           ),
         ),
       ],

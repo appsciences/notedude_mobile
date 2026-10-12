@@ -46,6 +46,7 @@ Future<void> _pump(WidgetTester tester, FakeAuth auth) async {
       store: _Store(),
       transcriber: _Transcriber(),
       auth: auth,
+      api: FakeNoteApi(),
     ),
   );
   await tester.pump();

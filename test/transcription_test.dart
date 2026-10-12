@@ -27,7 +27,14 @@ class _Store implements CaptureStore {
   @override
   Future<List<VoiceCapture>> load() async => List.of(captures);
   @override
-  Future<void> save(VoiceCapture capture) async => captures.insert(0, capture);
+  Future<void> save(VoiceCapture capture) async {
+    final index = captures.indexWhere((item) => item.id == capture.id);
+    if (index == -1) {
+      captures.insert(0, capture);
+    } else {
+      captures[index] = capture;
+    }
+  }
 }
 
 class _Transcriber implements TranscriptionProvider {
@@ -67,6 +74,7 @@ Future<void> _pumpApp(
       store: store,
       transcriber: transcriber,
       auth: FakeAuth(user: FakeAuth.person),
+      api: FakeNoteApi(),
     ),
   );
   await tester.pump();
@@ -103,7 +111,7 @@ void main() {
     expect(find.textContaining('Audio retained'), findsOneWidget);
     expect(_fieldText(tester), isEmpty);
 
-    await tester.tap(find.text('Save locally'));
+    await tester.tap(find.text('Save & sync'));
     await tester.pump();
     expect(store.captures, hasLength(1));
     expect(store.captures.single.audioPath, '/tmp/capture.m4a');
@@ -137,7 +145,7 @@ void main() {
     await _pumpApp(tester, store: store, transcriber: transcriber);
 
     await _recordAndStop(tester);
-    await tester.tap(find.text('Save locally'));
+    await tester.tap(find.text('Save & sync'));
     await tester.pump();
     pending.complete('stale words');
     await tester.pump();
