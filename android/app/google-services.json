@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "584175873685",
+    "project_id": "notedude2",
+    "storage_bucket": "notedude2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:584175873685:android:ac6ef59575e28127e6359c",
+        "android_client_info": {
+          "package_name": "com.notedude.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "584175873685-3oka07iug2srhhk7dras6a2oikf72fpe.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.notedude.app",
+            "certificate_hash": "c3c5f51f5dd54a5d69ccf9c0467c94a9de926156"
+          }
+        },
+        {
+          "client_id": "584175873685-djeodn7ci0msvqkuuhmfub6g2v879gav.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC4mI5BvGuFOW_nOyK_me48WrKN4f3gut4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "584175873685-8vhell32c1v54eg9a6hrqt1r0hgfh98o.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "584175873685-0g6f0nq84o47lt36v14aik2tds2ir83n.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.notedude.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,18 +1,56 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import 'auth.dart';
 import 'capture.dart';
 import 'transcription.dart';
 
-void main() => runApp(const NoteDudeApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+  } catch (error) {
+    runApp(StartupErrorApp(error: error));
+    return;
+  }
+  runApp(const NoteDudeApp());
+}
+
+class StartupErrorApp extends StatelessWidget {
+  const StartupErrorApp({super.key, required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('NoteDude could not start: $error'),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class NoteDudeApp extends StatelessWidget {
-  const NoteDudeApp({super.key, this.recorder, this.store, this.transcriber});
+  const NoteDudeApp({
+    super.key,
+    this.recorder,
+    this.store,
+    this.transcriber,
+    this.auth,
+  });
 
   final VoiceRecorder? recorder;
   final CaptureStore? store;
   final TranscriptionProvider? transcriber;
+  final AuthService? auth;
 
   @override
   Widget build(BuildContext context) {
@@ -28,10 +66,131 @@ class NoteDudeApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xff11130f),
         useMaterial3: true,
       ),
-      home: CaptureScreen(
-        recorder: recorder ?? DeviceVoiceRecorder(),
-        store: store ?? LocalCaptureStore(),
-        transcriber: transcriber ?? WhisperTranscriptionProvider(),
+      home: AuthGate(
+        auth: auth ?? FirebaseAuthService(),
+        signedIn: (user, signOut) => CaptureScreen(
+          recorder: recorder ?? DeviceVoiceRecorder(),
+          store: store ?? LocalCaptureStore(),
+          transcriber: transcriber ?? WhisperTranscriptionProvider(),
+          account: user,
+          onSignOut: signOut,
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows the app only to a signed-in person. Firebase persists the session,
+/// so the network is only needed for the first sign-in.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key, required this.auth, required this.signedIn});
+
+  final AuthService auth;
+  final Widget Function(AuthUser user, VoidCallback signOut) signedIn;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthUser?>(
+      stream: auth.userChanges,
+      initialData: auth.currentUser,
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user == null) return SignInScreen(auth: auth);
+        return signedIn(user, () => auth.signOut());
+      },
+    );
+  }
+}
+
+class SignInScreen extends StatefulWidget {
+  const SignInScreen({super.key, required this.auth});
+
+  final AuthService auth;
+
+  @override
+  State<SignInScreen> createState() => _SignInScreenState();
+}
+
+class _SignInScreenState extends State<SignInScreen> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _signIn() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.auth.signInWithGoogle();
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = error.cancelled ? null : 'Sign-in failed: ${error.message}';
+      });
+      return;
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'Sign-in failed: $error';
+      });
+      return;
+    }
+    // Success swaps this screen out via AuthGate; nothing else to do.
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'NOTEDUDE',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 3,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Sign in to capture notes and tasks by voice and sync them to NoteDude.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 36),
+              FilledButton.icon(
+                onPressed: _busy ? null : _signIn,
+                icon: _busy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Text('Continue with Google'),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -45,11 +204,15 @@ class CaptureScreen extends StatefulWidget {
     required this.recorder,
     required this.store,
     required this.transcriber,
+    this.account,
+    this.onSignOut,
   });
 
   final VoiceRecorder recorder;
   final CaptureStore store;
   final TranscriptionProvider transcriber;
+  final AuthUser? account;
+  final VoidCallback? onSignOut;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -242,6 +405,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
           style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 2),
         ),
         actions: [
+          if (widget.onSignOut != null)
+            PopupMenuButton<String>(
+              tooltip: 'Account',
+              icon: const Icon(Icons.account_circle_outlined),
+              onSelected: (_) => widget.onSignOut!(),
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: Text(widget.account?.label ?? ''),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'signout',
+                  child: Text('Sign out'),
+                ),
+              ],
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(

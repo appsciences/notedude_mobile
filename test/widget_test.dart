@@ -4,6 +4,8 @@ import 'package:notedude_mobile/capture.dart';
 import 'package:notedude_mobile/main.dart';
 import 'package:notedude_mobile/transcription.dart';
 
+import 'fake_auth.dart';
+
 class FakeRecorder implements VoiceRecorder {
   @override
   Future<void> dispose() async {}
@@ -55,6 +57,7 @@ void main() {
         recorder: FakeRecorder(),
         store: store,
         transcriber: FakeTranscriber(),
+        auth: FakeAuth(user: FakeAuth.person),
       ),
     );
     await tester.pump();
