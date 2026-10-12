@@ -61,7 +61,20 @@ Audio cannot be added directly to those documents without changing the current F
 
 Do not use silence-driven live dictation as the source recording. Record first, then transcribe the finished file. This preserves the source and avoids Google Keep's premature cutoff failure mode.
 
-The transcription provider is deliberately behind an interface. MVP candidates are server-side OpenAI transcription or an on-device engine. Server-side transcription is likely the fastest high-quality path but requires an authenticated upload endpoint, explicit privacy messaging, retry behavior, and a deletion/retention policy. API secrets must never ship in the mobile binary.
+The transcription provider is deliberately behind a `TranscriptionProvider` interface (`lib/transcription.dart`).
+
+**Decision (free release):** transcription runs on the device with whisper.cpp (`whisper_ggml`), fed the finished recording. Because the file is transcribed after the fact, pauses in speech cannot end it early, which is the failure mode of the OS dictation APIs. Live OS dictation (`speech_to_text`) is explicitly rejected as the capture path.
+
+**Paid tier:** ChatGPT transcription is sold as an in-app purchase and implements the same interface server-side. It needs an authenticated upload endpoint, entitlement verification, explicit privacy messaging, retry behavior, and a deletion/retention policy. API secrets must never ship in the mobile binary.
+
+On-device details:
+
+- Default model is Whisper `base` (multilingual, language auto-detected, roughly 140 MB). It is downloaded once on first use rather than bundled, with visible progress.
+- The download streams to a `.part` file and is renamed into place only after an HTTP 200 and the full declared length arrives, so an error page or interrupted download can never be used as a model.
+- Failure never discards audio: the capture stays reviewable and saveable, and the user can type the note.
+- A transcript never overwrites text the user already typed, and a late result for a capture that was saved or restarted is dropped.
+- AAC input is converted by the bundled FFmpeg, which adds to the app size.
+- Requires Android API 24+ and iOS 15.6+.
 
 ## Task and reminder model
 
@@ -126,7 +139,9 @@ Conflicts follow NoteDude's existing field-level-write principle: mobile should 
 
 1. **Local capture foundation (current):** recorder, explicit stop/pause, editable note/task draft, durable local outbox.
 2. **Identity and NoteDude sync:** FlutterFire setup, Google sign-in, Firestore-compatible create, Storage upload, retries and sync status. This requires registering Android/iOS apps in Firebase and updating NoteDude security rules.
-3. **Transcription:** authenticated server endpoint/provider, progress and retry, audio playback and deletion.
+3. **Transcription:** 
+   - **3a. On-device Whisper (free release, in progress):** provider interface, one-time model download with progress, editable result, failure keeps audio.
+   - **3b. ChatGPT in-app purchase (paid tier):** purchase and entitlement, authenticated server endpoint, progress and retry, audio playback and deletion.
 4. **Reminder foundation:** due-time editor, local scheduling, loud notification channel, notification permission/readiness and Test alert.
 5. **Alarm-grade Android UX:** exact-alarm permission, reboot/time-zone rescheduling, full-screen capability check and ringing activity where policy permits.
 6. **Capture accelerators:** launcher shortcut, share target, Quick Settings tile, optional lock-screen/widget entry.
@@ -143,7 +158,8 @@ Conflicts follow NoteDude's existing field-level-write principle: mobile should 
 ## Open product decisions
 
 - Whether Google Keep/Tasks integration remains in NoteDude after direct mobile capture proves reliable.
-- Which transcription provider and audio-region/retention settings to use.
+- Audio-region/retention settings for the paid ChatGPT tier, and the in-app purchase product model (subscription vs. one-time vs. credits).
+- Whether to offer a Wi-Fi-only or confirm-before-download prompt for the on-device model, and whether a smaller `tiny` model should be the fallback on low-end devices.
 - Whether mobile reminder metadata lives in the note document (requiring schema/rules changes) or a sibling collection.
 - Whether `#tasks-today` should imply a default due time or remain only an organizational tag.
 - Final Android application ID (replace `com.example.notedude_mobile`) and display name capitalization.

@@ -3,14 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'capture.dart';
+import 'transcription.dart';
 
 void main() => runApp(const NoteDudeApp());
 
 class NoteDudeApp extends StatelessWidget {
-  const NoteDudeApp({super.key, this.recorder, this.store});
+  const NoteDudeApp({super.key, this.recorder, this.store, this.transcriber});
 
   final VoiceRecorder? recorder;
   final CaptureStore? store;
+  final TranscriptionProvider? transcriber;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +31,7 @@ class NoteDudeApp extends StatelessWidget {
       home: CaptureScreen(
         recorder: recorder ?? DeviceVoiceRecorder(),
         store: store ?? LocalCaptureStore(),
+        transcriber: transcriber ?? WhisperTranscriptionProvider(),
       ),
     );
   }
@@ -37,10 +40,16 @@ class NoteDudeApp extends StatelessWidget {
 enum _CaptureStage { ready, recording, paused, review, saving }
 
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key, required this.recorder, required this.store});
+  const CaptureScreen({
+    super.key,
+    required this.recorder,
+    required this.store,
+    required this.transcriber,
+  });
 
   final VoiceRecorder recorder;
   final CaptureStore store;
+  final TranscriptionProvider transcriber;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -64,6 +73,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Timer? _timer;
   int _savedCount = 0;
   String? _message;
+  // Bumped whenever a capture ends or restarts so a slow transcription of an
+  // earlier recording can never write into a different capture.
+  int _transcriptionToken = 0;
+  bool _transcribing = false;
+  TranscriptionProgress? _progress;
 
   @override
   void initState() {
@@ -78,12 +92,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _timer?.cancel();
     _text.dispose();
     widget.recorder.dispose();
+    widget.transcriber.dispose();
     super.dispose();
   }
 
   Future<void> _start() async {
     try {
       final path = await widget.recorder.start();
+      _transcriptionToken++;
       _startedAt = DateTime.now();
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted && _stage == _CaptureStage.recording) {
@@ -119,6 +135,45 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _stage = _CaptureStage.review;
       _message = 'Recording retained. Add or correct the text before saving.';
     });
+    final recording = _audioPath;
+    if (recording != null) unawaited(_transcribe(recording));
+  }
+
+  Future<void> _transcribe(String audioPath) async {
+    final token = ++_transcriptionToken;
+    bool current() => mounted && token == _transcriptionToken;
+
+    setState(() {
+      _transcribing = true;
+      _progress = null;
+    });
+    try {
+      final transcript = await widget.transcriber.transcribe(
+        audioPath,
+        onProgress: (progress) {
+          if (current()) setState(() => _progress = progress);
+        },
+      );
+      if (!current()) return;
+      setState(() {
+        _transcribing = false;
+        _progress = null;
+        // Never clobber text the user typed while we were working.
+        if (_text.text.trim().isEmpty && transcript.isNotEmpty) {
+          _text.text = transcript;
+          _message =
+              'Transcribed on this device. Check the text before saving.';
+        }
+      });
+    } catch (error) {
+      if (!current()) return;
+      setState(() {
+        _transcribing = false;
+        _progress = null;
+        _message =
+            'Transcription failed: $error. Type the note, or save the recording as is.';
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -137,7 +192,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
     try {
       await widget.store.save(capture);
       final captures = await widget.store.load();
+      _transcriptionToken++;
       setState(() {
+        _transcribing = false;
+        _progress = null;
         _savedCount = captures.length;
         _stage = _CaptureStage.ready;
         _message = 'Saved locally · waiting for NoteDude sync';
@@ -153,6 +211,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _message = 'Could not save locally: $error';
       });
     }
+  }
+
+  String get _transcriptionStatus {
+    final progress = _progress;
+    final percent = progress?.fraction == null
+        ? ''
+        : ' ${(progress!.fraction! * 100).round()}%';
+    return progress?.phase == TranscriptionPhase.downloadingModel
+        ? 'Downloading the speech model (one time)…$percent'
+        : 'Transcribing on this device…$percent';
   }
 
   String get _clock {
@@ -302,6 +370,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
             ),
           ],
         ),
+        if (_transcribing) ...[
+          const SizedBox(height: 14),
+          LinearProgressIndicator(value: _progress?.fraction),
+          const SizedBox(height: 8),
+          Text(_transcriptionStatus, style: const TextStyle(fontSize: 13)),
+        ],
         const SizedBox(height: 18),
         TextField(
           controller: _text,
@@ -312,7 +386,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             border: OutlineInputBorder(),
             labelText: 'Note text',
             hintText:
-                'Transcription will appear here. For now, type or correct the note.',
+                'Transcription appears here when ready. You can also type.',
             alignLabelWithHint: true,
           ),
         ),

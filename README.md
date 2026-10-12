@@ -9,7 +9,7 @@ This is intentionally not a general-purpose mobile note editor. See [the product
 
 ## Current state
 
-The first local capture slice is in progress. It records AAC audio until the user explicitly stops, stores recordings in app documents, lets the user edit the note text and task list, and persists captures to a local sync outbox. Firebase sync, transcription, playback, and alarm delivery are subsequent slices.
+Local capture and on-device transcription are in place. The app records AAC audio until the user explicitly stops, stores recordings in app documents, transcribes the finished file on the phone with Whisper (free tier), lets the user edit the note text and task list, and persists captures to a local sync outbox. The first transcription downloads a speech model (about 140 MB) once. Firebase sync, the ChatGPT in-app purchase tier, playback, and alarm delivery are subsequent slices.
 
 ## Run
 
@@ -18,4 +18,4 @@ flutter pub get
 flutter run
 ```
 
-The app currently targets Android and iOS behavior. Android is the priority platform because it offers the strongest alarm/full-screen notification options.
+The app targets Android 7.0+ (API 24) and iOS 15.6+. Android is the priority platform because it offers the strongest alarm/full-screen notification options.
