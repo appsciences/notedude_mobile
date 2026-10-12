@@ -51,35 +51,59 @@ Future<void> _pump(WidgetTester tester, FakeAuth auth) async {
   await tester.pump();
 }
 
+Future<void> _openMenu(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Account'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
-  testWidgets('signed out users see sign-in, not the capture screen', (
+  testWidgets('signed out users can capture without signing in', (
     tester,
   ) async {
     await _pump(tester, FakeAuth());
 
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.byIcon(Icons.mic_rounded), findsNothing);
-  });
-
-  testWidgets('already signed in users go straight to capture', (tester) async {
-    await _pump(tester, FakeAuth(user: FakeAuth.person));
-
-    expect(find.text('Continue with Google'), findsNothing);
     expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
+    expect(find.text('Continue with Google'), findsNothing);
   });
 
-  testWidgets('signing in with Google reveals the capture screen', (
+  testWidgets('a capture saved while signed out says sign in to sync', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuth());
+
+    await tester.tap(find.byIcon(Icons.mic_rounded));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.stop_rounded));
+    await tester.pump();
+    await tester.tap(find.text('Save locally'));
+    await tester.pump();
+
+    expect(find.textContaining('sign in to sync'), findsOneWidget);
+  });
+
+  testWidgets('the account menu offers Google sign-in when signed out', (
     tester,
   ) async {
     final auth = FakeAuth();
     await _pump(tester, auth);
 
-    await tester.tap(find.text('Continue with Google'));
-    await tester.pump();
-    await tester.pump();
+    await _openMenu(tester);
+    expect(find.text('Sign in with Google'), findsOneWidget);
+    await tester.tap(find.text('Sign in with Google'));
+    await tester.pumpAndSettle();
 
     expect(auth.signInCalls, 1);
-    expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
+    await _openMenu(tester);
+    expect(find.text('leo@example.com'), findsOneWidget);
+    expect(find.text('Sign out'), findsOneWidget);
+  });
+
+  testWidgets('already signed in users see their account', (tester) async {
+    await _pump(tester, FakeAuth(user: FakeAuth.person));
+
+    await _openMenu(tester);
+    expect(find.text('leo@example.com'), findsOneWidget);
+    expect(find.text('Sign in with Google'), findsNothing);
   });
 
   testWidgets('cancelling the Google prompt is not shown as an error', (
@@ -88,12 +112,12 @@ void main() {
     final auth = FakeAuth()..signInError = const AuthException.cancelled();
     await _pump(tester, auth);
 
-    await tester.tap(find.text('Continue with Google'));
-    await tester.pump();
-    await tester.pump();
+    await _openMenu(tester);
+    await tester.tap(find.text('Sign in with Google'));
+    await tester.pumpAndSettle();
 
-    expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.textContaining('failed'), findsNothing);
+    expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
   });
 
   testWidgets('a sign-in failure is explained and can be retried', (
@@ -102,48 +126,53 @@ void main() {
     final auth = FakeAuth()..signInError = const AuthException('No network.');
     await _pump(tester, auth);
 
-    await tester.tap(find.text('Continue with Google'));
-    await tester.pump();
-    await tester.pump();
-
+    await _openMenu(tester);
+    await tester.tap(find.text('Sign in with Google'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('Sign-in failed'), findsOneWidget);
     expect(find.textContaining('No network.'), findsOneWidget);
 
     auth.signInError = null;
-    await tester.tap(find.text('Continue with Google'));
-    await tester.pump();
-    await tester.pump();
-    expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
+    await _openMenu(tester);
+    await tester.tap(find.text('Sign in with Google'));
+    await tester.pumpAndSettle();
+    expect(auth.currentUser, isNotNull);
   });
 
-  testWidgets('the sign-in button is disabled while a sign-in is running', (
+  testWidgets('sign-in cannot be started twice while one is running', (
     tester,
   ) async {
     final auth = _SlowAuth();
     await _pump(tester, auth);
 
-    await tester.tap(find.text('Continue with Google'));
+    await _openMenu(tester);
+    await tester.tap(find.text('Sign in with Google'));
     await tester.pump();
-    await tester.tap(find.text('Continue with Google'), warnIfMissed: false);
+    await _openMenu(tester);
+    final item = find.text('Signing in…');
+    expect(item, findsOneWidget);
+    await tester.tap(item, warnIfMissed: false);
     await tester.pump();
 
     expect(auth.signInCalls, 1);
     auth.finish();
-    await tester.pump();
+    await tester.pumpAndSettle();
   });
 
-  testWidgets('signing out returns to the sign-in screen', (tester) async {
+  testWidgets('signing out keeps the capture screen and local data', (
+    tester,
+  ) async {
     final auth = FakeAuth(user: FakeAuth.person);
     await _pump(tester, auth);
 
-    await tester.tap(find.byTooltip('Account'));
-    await tester.pumpAndSettle();
-    expect(find.text('leo@example.com'), findsOneWidget);
+    await _openMenu(tester);
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
 
     expect(auth.signOutCalls, 1);
-    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
+    await _openMenu(tester);
+    expect(find.text('Sign in with Google'), findsOneWidget);
   });
 }
 

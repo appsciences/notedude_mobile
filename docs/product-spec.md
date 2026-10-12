@@ -138,7 +138,7 @@ Conflicts follow NoteDude's existing field-level-write principle: mobile should 
 ## Identity and authentication
 
 - Identity is Firebase Auth in the existing `notedude2` project, so mobile users are the same accounts as the web app. Sign-in is Google only (`google_sign_in` + `firebase_auth`).
-- The app is gated behind sign-in. Firebase persists the session, so the network is needed only for the first sign-in; capture works offline afterwards.
+- Sign-in is optional for capture. Recording, on-device transcription, and the local outbox work signed out, on a fresh install, and offline. Sign-in is offered from the account menu and is required only to sync; captures made signed out stay in the outbox and sync after sign-in. Firebase persists the session across launches.
 - The NoteDude API is secured by Firebase Auth. Callers send the user's Firebase ID token (`AuthService.idToken`) as `Authorization: Bearer`, refreshing with `forceRefresh` after a rejection.
 - Application ID / bundle ID is `com.notedude.app`. Android and iOS apps are registered in `notedude2`. Each developer machine's debug keystore SHA-1, and the release/Play App Signing SHA-1s, must be added to the Android app in Firebase or Google sign-in fails with a configuration error.
 - `google-services.json` and `GoogleService-Info.plist` are client identifiers, not secrets, and are committed.
