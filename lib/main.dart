@@ -1,18 +1,56 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import 'auth.dart';
 import 'capture.dart';
 import 'transcription.dart';
 
-void main() => runApp(const NoteDudeApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+  } catch (error) {
+    runApp(StartupErrorApp(error: error));
+    return;
+  }
+  runApp(const NoteDudeApp());
+}
+
+class StartupErrorApp extends StatelessWidget {
+  const StartupErrorApp({super.key, required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('NoteDude could not start: $error'),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class NoteDudeApp extends StatelessWidget {
-  const NoteDudeApp({super.key, this.recorder, this.store, this.transcriber});
+  const NoteDudeApp({
+    super.key,
+    this.recorder,
+    this.store,
+    this.transcriber,
+    this.auth,
+  });
 
   final VoiceRecorder? recorder;
   final CaptureStore? store;
   final TranscriptionProvider? transcriber;
+  final AuthService? auth;
 
   @override
   Widget build(BuildContext context) {
@@ -28,10 +66,43 @@ class NoteDudeApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xff11130f),
         useMaterial3: true,
       ),
-      home: CaptureScreen(
+      home: _AppRoot(
+        auth: auth ?? FirebaseAuthService(),
         recorder: recorder ?? DeviceVoiceRecorder(),
         store: store ?? LocalCaptureStore(),
         transcriber: transcriber ?? WhisperTranscriptionProvider(),
+      ),
+    );
+  }
+}
+
+/// Capture never waits on an account: sign-in only matters for syncing, so
+/// the screen is always shown and just learns who (if anyone) is signed in.
+class _AppRoot extends StatelessWidget {
+  const _AppRoot({
+    required this.auth,
+    required this.recorder,
+    required this.store,
+    required this.transcriber,
+  });
+
+  final AuthService auth;
+  final VoiceRecorder recorder;
+  final CaptureStore store;
+  final TranscriptionProvider transcriber;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthUser?>(
+      stream: auth.userChanges,
+      initialData: auth.currentUser,
+      builder: (context, snapshot) => CaptureScreen(
+        recorder: recorder,
+        store: store,
+        transcriber: transcriber,
+        account: snapshot.data,
+        onSignIn: auth.signInWithGoogle,
+        onSignOut: auth.signOut,
       ),
     );
   }
@@ -45,11 +116,17 @@ class CaptureScreen extends StatefulWidget {
     required this.recorder,
     required this.store,
     required this.transcriber,
+    this.account,
+    this.onSignIn,
+    this.onSignOut,
   });
 
   final VoiceRecorder recorder;
   final CaptureStore store;
   final TranscriptionProvider transcriber;
+  final AuthUser? account;
+  final Future<void> Function()? onSignIn;
+  final Future<void> Function()? onSignOut;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -77,6 +154,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   // earlier recording can never write into a different capture.
   int _transcriptionToken = 0;
   bool _transcribing = false;
+  bool _signingIn = false;
   TranscriptionProgress? _progress;
 
   @override
@@ -139,6 +217,27 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (recording != null) unawaited(_transcribe(recording));
   }
 
+  Future<void> _signIn() async {
+    final signIn = widget.onSignIn;
+    if (signIn == null || _signingIn) return;
+    setState(() => _signingIn = true);
+    String? failure;
+    try {
+      await signIn();
+    } on AuthException catch (error) {
+      if (!error.cancelled) failure = error.message;
+    } catch (error) {
+      failure = '$error';
+    }
+    if (!mounted) return;
+    setState(() => _signingIn = false);
+    if (failure != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Sign-in failed: $failure')));
+    }
+  }
+
   Future<void> _transcribe(String audioPath) async {
     final token = ++_transcriptionToken;
     bool current() => mounted && token == _transcriptionToken;
@@ -198,7 +297,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _progress = null;
         _savedCount = captures.length;
         _stage = _CaptureStage.ready;
-        _message = 'Saved locally · waiting for NoteDude sync';
+        _message = widget.account == null
+            ? 'Saved locally · sign in to sync to NoteDude'
+            : 'Saved locally · waiting for NoteDude sync';
         _audioPath = null;
         _duration = Duration.zero;
         _kind = CaptureKind.note;
@@ -242,6 +343,39 @@ class _CaptureScreenState extends State<CaptureScreen> {
           style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 2),
         ),
         actions: [
+          if (widget.onSignIn != null || widget.onSignOut != null)
+            PopupMenuButton<String>(
+              tooltip: 'Account',
+              icon: Icon(
+                widget.account == null
+                    ? Icons.account_circle_outlined
+                    : Icons.account_circle,
+              ),
+              onSelected: (value) {
+                if (value == 'signin') _signIn();
+                if (value == 'signout') widget.onSignOut?.call();
+              },
+              itemBuilder: (context) => widget.account == null
+                  ? [
+                      PopupMenuItem<String>(
+                        value: 'signin',
+                        enabled: !_signingIn,
+                        child: Text(
+                          _signingIn ? 'Signing in…' : 'Sign in with Google',
+                        ),
+                      ),
+                    ]
+                  : [
+                      PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text(widget.account!.label),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'signout',
+                        child: Text('Sign out'),
+                      ),
+                    ],
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(

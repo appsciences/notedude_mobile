@@ -135,10 +135,18 @@ Conflicts follow NoteDude's existing field-level-write principle: mobile should 
 - Android setup reports notification permission, channel sound/importance, exact-alarm access, full-screen access, and battery restrictions where detectable.
 - Denied permissions produce a clear degraded state, never silent success.
 
+## Identity and authentication
+
+- Identity is Firebase Auth in the existing `notedude2` project, so mobile users are the same accounts as the web app. Sign-in is Google only (`google_sign_in` + `firebase_auth`).
+- Sign-in is optional for capture. Recording, on-device transcription, and the local outbox work signed out, on a fresh install, and offline. Sign-in is offered from the account menu and is required only to sync; captures made signed out stay in the outbox and sync after sign-in. Firebase persists the session across launches.
+- The NoteDude API is secured by Firebase Auth. Callers send the user's Firebase ID token (`AuthService.idToken`) as `Authorization: Bearer`, refreshing with `forceRefresh` after a rejection.
+- Application ID / bundle ID is `com.notedude.app`. Android and iOS apps are registered in `notedude2`. Each developer machine's debug keystore SHA-1, and the release/Play App Signing SHA-1s, must be added to the Android app in Firebase or Google sign-in fails with a configuration error.
+- `google-services.json` and `GoogleService-Info.plist` are client identifiers, not secrets, and are committed.
+
 ## Delivery slices
 
 1. **Local capture foundation (current):** recorder, explicit stop/pause, editable note/task draft, durable local outbox.
-2. **Identity and NoteDude sync:** FlutterFire setup, Google sign-in, Firestore-compatible create, Storage upload, retries and sync status. This requires registering Android/iOS apps in Firebase and updating NoteDude security rules.
+2. **Identity and NoteDude sync (sign-in done, sync pending):** FlutterFire setup, Google sign-in, Firestore-compatible create, Storage upload, retries and sync status. This requires registering Android/iOS apps in Firebase and updating NoteDude security rules.
 3. **Transcription:** 
    - **3a. On-device Whisper (free release, in progress):** provider interface, one-time model download with progress, editable result, failure keeps audio.
    - **3b. ChatGPT in-app purchase (paid tier):** purchase and entitlement, authenticated server endpoint, progress and retry, audio playback and deletion.
@@ -162,4 +170,4 @@ Conflicts follow NoteDude's existing field-level-write principle: mobile should 
 - Whether to offer a Wi-Fi-only or confirm-before-download prompt for the on-device model, and whether a smaller `tiny` model should be the fallback on low-end devices.
 - Whether mobile reminder metadata lives in the note document (requiring schema/rules changes) or a sibling collection.
 - Whether `#tasks-today` should imply a default due time or remain only an organizational tag.
-- Final Android application ID (replace `com.example.notedude_mobile`) and display name capitalization.
+- Display name capitalization (the application ID is settled as `com.notedude.app`).
