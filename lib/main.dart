@@ -108,6 +108,22 @@ class _AppRoot extends StatelessWidget {
   }
 }
 
+/// The wordmark, in the web app's font stack (Fira Code first, then the
+/// platform monospace fonts).
+const _logoStyle = TextStyle(
+  fontFamily: 'FiraCode',
+  fontFamilyFallback: [
+    'ui-monospace',
+    'SFMono-Regular',
+    'Menlo',
+    'Monaco',
+    'Consolas',
+    'monospace',
+  ],
+  fontWeight: FontWeight.w700,
+  fontSize: 20,
+);
+
 enum _CaptureStage { ready, recording, paused, review, saving }
 
 class CaptureScreen extends StatefulWidget {
@@ -338,10 +354,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _stage == _CaptureStage.review || _stage == _CaptureStage.saving;
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'NOTEDUDE',
-          style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 2),
-        ),
+        title: const Text('note_dude', style: _logoStyle),
         actions: [
           if (widget.onSignIn != null || widget.onSignOut != null)
             PopupMenuButton<String>(

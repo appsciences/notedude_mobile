@@ -76,4 +76,21 @@ void main() {
     expect(store.captures, hasLength(1));
     expect(find.text('1 OUTBOX'), findsOneWidget);
   });
+
+  testWidgets('the logo reads note_dude in Fira Code', (tester) async {
+    await tester.pumpWidget(
+      NoteDudeApp(
+        recorder: FakeRecorder(),
+        store: MemoryStore(),
+        transcriber: FakeTranscriber(),
+        auth: FakeAuth(user: FakeAuth.person),
+      ),
+    );
+    await tester.pump();
+
+    final logo = tester.widget<Text>(find.text('note_dude'));
+    expect(logo.style?.fontFamily, 'FiraCode');
+    expect(logo.style?.fontFamilyFallback, contains('ui-monospace'));
+    expect(find.text('NOTEDUDE'), findsNothing);
+  });
 }
