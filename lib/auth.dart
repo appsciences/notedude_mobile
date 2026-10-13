@@ -2,14 +2,36 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthUser {
-  const AuthUser({required this.uid, this.email, this.displayName});
+  const AuthUser({
+    required this.uid,
+    this.email,
+    this.displayName,
+    this.photoUrl,
+  });
 
   final String uid;
   final String? email;
   final String? displayName;
+  final String? photoUrl;
 
   /// What to show the person: the address if there is one, else their name.
   String get label => email ?? displayName ?? uid;
+}
+
+/// One or two letters to show when there is no photo: the first and last word
+/// of the name, else the first letter of the email, else `?`.
+String initialsFor(AuthUser user) {
+  String first(String word) => String.fromCharCode(word.runes.first);
+  final words = (user.displayName ?? '')
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .toList();
+  if (words.length >= 2) {
+    return (first(words.first) + first(words.last)).toUpperCase();
+  }
+  if (words.length == 1) return first(words.single).toUpperCase();
+  final email = user.email?.trim() ?? '';
+  return email.isEmpty ? '?' : first(email).toUpperCase();
 }
 
 class AuthException implements Exception {
@@ -59,6 +81,7 @@ class FirebaseAuthService implements AuthService {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName,
+          photoUrl: user.photoURL,
         );
 
   @override
