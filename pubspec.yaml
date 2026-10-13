@@ -51,6 +51,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -100,3 +101,15 @@ flutter:
         - asset: assets/fonts/FiraCode-Regular.ttf
         - asset: assets/fonts/FiraCode-Bold.ttf
           weight: 700
+
+flutter_launcher_icons:
+  # The web app's n_d icon (notedude2/public/notedude-n_d-icon-512.png).
+  android: true
+  ios: true
+  image_path: assets/icon/notedude-icon.png
+  image_path_ios: assets/icon/notedude-icon-ios.png
+  min_sdk_android: 24
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: assets/icon/notedude-icon-foreground.png
+  adaptive_icon_monochrome: assets/icon/notedude-icon-foreground.png
+  remove_alpha_ios: true
