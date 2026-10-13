@@ -456,11 +456,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
           if (widget.onSignIn != null || widget.onSignOut != null)
             PopupMenuButton<String>(
               tooltip: 'Account',
-              icon: Icon(
-                widget.account == null
-                    ? Icons.account_circle_outlined
-                    : Icons.account_circle,
-              ),
+              icon: widget.account == null
+                  ? const Icon(Icons.account_circle_outlined)
+                  : AccountAvatar(user: widget.account!),
               onSelected: (value) {
                 if (value == 'signin') _signIn();
                 if (value == 'sync') _syncNow();
@@ -690,6 +688,56 @@ class _CaptureScreenState extends State<CaptureScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Who is signed in, at a glance: the Google photo when it loads, initials
+/// otherwise (no photo, offline, or a failed load).
+class AccountAvatar extends StatelessWidget {
+  const AccountAvatar({super.key, required this.user, this.size = 32});
+
+  final AuthUser user;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final initials = Center(
+      child: Text(
+        initialsFor(user),
+        style: TextStyle(
+          fontFamily: 'FiraCode',
+          fontWeight: FontWeight.w700,
+          fontSize: size * 0.4,
+          color: scheme.onPrimary,
+        ),
+      ),
+    );
+    final photo = user.photoUrl;
+    return Container(
+      key: const Key('account-avatar'),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: scheme.primary,
+        border: Border.all(color: scheme.primary, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: photo == null
+          ? initials
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                initials,
+                Image.network(
+                  photo,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ],
+            ),
     );
   }
 }
