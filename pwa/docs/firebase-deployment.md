@@ -36,6 +36,23 @@ PR rules instead if desired. Do not remove existing organization approval polici
 Missing identity configuration makes the deployment job **fail visibly**, rather than
 reporting a successful workflow that silently skipped deployment.
 
+## Using an existing base64 service-account credential
+
+If you already have an authorized service-account key, the workflow also accepts it:
+
+1. Open https://github.com/appsciences/notedude_mobile/settings/environments.
+2. Create or select the environment named `firebase`.
+3. Under **Environment secrets**, click **Add environment secret**.
+4. Name it `GOOGLE_APPLICATION_CREDENTIALS_B64` and paste the base64-encoded JSON key as its value.
+5. Save. The key's service account needs Hosting deployment permissions and read access to
+   existing function rewrites, as described above. The dedicated site must already exist.
+
+The workflow prefers OIDC when both identity variables are present. Otherwise it decodes
+this secret into a restricted temporary file, uses Application Default Credentials and
+removes the file even if deployment fails. The key is never printed or put in build artifacts.
+PR jobs cannot access it. This is an alternative to the keyless setup; it does not create
+Hosting sites, IAM grants or DNS records. Migrate to OIDC and remove the stored key when practical.
+
 ## One-time Google Cloud setup
 
 An administrator of `notedude2` must run the reviewed script from an authenticated Google

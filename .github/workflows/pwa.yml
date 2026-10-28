@@ -74,16 +74,26 @@ jobs:
       GOOGLE_CLOUD_PROJECT: notedude2
     steps:
       - uses: actions/checkout@v4
-      - name: Require deployment identity
+      - name: Select deployment identity
+        id: identity
         env:
           WIF_PROVIDER: ${{ vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
           DEPLOY_SERVICE_ACCOUNT: ${{ vars.FIREBASE_DEPLOY_SERVICE_ACCOUNT }}
+          CREDENTIALS_B64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_B64 }}
         run: |
-          if [ -z "$WIF_PROVIDER" ] || [ -z "$DEPLOY_SERVICE_ACCOUNT" ]; then
-            echo "::error::Configure FIREBASE_WORKLOAD_IDENTITY_PROVIDER and FIREBASE_DEPLOY_SERVICE_ACCOUNT in the firebase GitHub environment. See pwa/docs/firebase-deployment.md."
+          if [ -n "$WIF_PROVIDER" ] && [ -n "$DEPLOY_SERVICE_ACCOUNT" ]; then
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+          elif [ -n "$CREDENTIALS_B64" ]; then
+            umask 077
+            printf '%s' "$CREDENTIALS_B64" | base64 --decode > "$RUNNER_TEMP/ideadude-service-account.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/ideadude-service-account.json" >> "$GITHUB_ENV"
+            echo "mode=key" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Configure keyless identity variables or the GOOGLE_APPLICATION_CREDENTIALS_B64 secret in the firebase GitHub environment. See pwa/docs/firebase-deployment.md."
             exit 1
           fi
       - uses: google-github-actions/auth@v3
+        if: steps.identity.outputs.mode == 'oidc'
         with:
           workload_identity_provider: ${{ vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.FIREBASE_DEPLOY_SERVICE_ACCOUNT }}
@@ -119,3 +129,6 @@ jobs:
             echo "Firebase URL: https://$FIREBASE_HOSTING_SITE.web.app"
             echo "Custom domain: https://ideadude.notedude.dev (requires completed DNS and TLS setup)"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary service-account key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ideadude-service-account.json"
