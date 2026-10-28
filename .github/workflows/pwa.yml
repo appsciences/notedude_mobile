@@ -32,6 +32,7 @@ jobs:
       - run: npm test
       - name: Validate deployment scripts
         run: |
+          python3 -m unittest discover -s test -p '*_test.py'
           bash -n scripts/bootstrap-firebase.sh
           node --check scripts/hosting-smoke.mjs
           node --check scripts/provision-hosting.mjs
