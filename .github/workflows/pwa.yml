@@ -32,6 +32,7 @@ jobs:
       - run: npm test
       - name: Validate deployment scripts
         run: |
+          python3 -m unittest discover -s test -p '*_test.py'
           bash -n scripts/bootstrap-firebase.sh
           node --check scripts/hosting-smoke.mjs
           node --check scripts/provision-hosting.mjs
@@ -85,9 +86,7 @@ jobs:
           if [ -n "$WIF_PROVIDER" ] && [ -n "$DEPLOY_SERVICE_ACCOUNT" ]; then
             echo "mode=oidc" >> "$GITHUB_OUTPUT"
           elif [ -n "$CREDENTIALS_B64" ]; then
-            umask 077
-            printf '%s' "$CREDENTIALS_B64" | base64 --decode > "$RUNNER_TEMP/ideadude-service-account.json"
-            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/ideadude-service-account.json" >> "$GITHUB_ENV"
+            python3 scripts/prepare-credentials.py
             echo "mode=key" >> "$GITHUB_OUTPUT"
           else
             echo "::error::Configure keyless identity variables or the GOOGLE_APPLICATION_CREDENTIALS_B64 secret in the firebase GitHub environment. See pwa/docs/firebase-deployment.md."
