@@ -185,3 +185,24 @@ Candidate validation on 2026-10-27: production Vite build passed; 5 Node unit/in
 tests passed; 11 Playwright Chromium E2E tests passed. The opt-in live transcription test
 was skipped because testing-service credentials are not configured. No physical iPhone
 QA or Firebase deployment has been performed. CI runs the same local and browser checks.
+
+## Deployment specification: IdeaDude
+
+The user has selected `ideadude.notedude.dev` and authorized Firebase deployment. The
+selected dedicated Hosting site is `notedude2-ideadude` in project `notedude2`.
+
+- DEP-01: Every push/merge to `main` MUST run unit and production-browser tests. A successful
+  run MUST deploy the exact tested static artifact to the dedicated site. Pull requests
+  MUST NOT deploy or receive the Google Cloud deployment identity.
+- DEP-02: Deployment MUST use keyless GitHub OIDC restricted to this repository and `main`,
+  and MUST fail visibly if its identity variables are missing. Concurrent releases MUST
+  serialize. Publishing this PWA MUST NOT redeploy the MCP function.
+- DEP-03: Firebase MUST manage TLS for `ideadude.notedude.dev`; use only DNS records supplied
+  for this site, and preserve all other domain records. The current parking record must
+  be replaced for this subdomain.
+- DEP-04: A release MUST smoke-test the live manifest, assets, service worker, security headers,
+  authenticated MCP challenge and OAuth routing before being reported successful.
+
+Implementation and one-time setup are in `pwa/docs/firebase-deployment.md`. The user's
+Firebase deployment instruction supersedes the earlier conversational hold on publication;
+missing cloud credentials and live iPhone/transcription verification remain explicit limits.

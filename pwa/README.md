@@ -30,6 +30,10 @@ live QA. `gpt-4o-mini-transcribe` is a low-cost candidate, subject to API availa
 
 ## Firebase Hosting
 
+Production domain: **ideadude.notedude.dev**. See the
+[deployment runbook](docs/firebase-deployment.md) for keyless Google Cloud setup, Porkbun DNS,
+and automatic deployment after merges to `main`.
+
 Deploy to a **new dedicated mobile Hosting site in the same Firebase project** as the MCP
 function. Do not replace either existing NoteDude Hosting site. This config includes
 same-origin rewrites to `notedudeMcp` (`us-central1`) so no backend CORS change is necessary.
