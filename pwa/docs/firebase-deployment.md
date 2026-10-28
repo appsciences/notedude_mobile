@@ -45,7 +45,7 @@ If you already have an authorized service-account key, the workflow also accepts
 3. Under **Environment secrets**, click **Add environment secret**.
 4. Name it `GOOGLE_APPLICATION_CREDENTIALS_B64` and paste the base64-encoded JSON key as its value.
 5. Save. The key's service account needs Hosting deployment permissions and read access to
-   existing function rewrites, as described above. The dedicated site must already exist.
+   existing function rewrites, as described above. The workflow creates the dedicated site if needed and requests its custom-domain mapping.
 
 The workflow prefers OIDC when both identity variables are present. Otherwise it decodes
 this secret into a restricted temporary file, uses Application Default Credentials and
@@ -121,3 +121,7 @@ The MCP repository's existing deployment job was also skipping because it lacked
 configuration. No Firebase site, domain mapping, IAM grants or DNS records have yet been
 created by this task. The workflow is prepared; deployment must be confirmed by a successful
 Firebase deploy job before calling the app live.
+
+The deploy job now provisions the dedicated Hosting site if absent and requests the custom
+domain mapping using the supplied identity. Its service account needs Hosting admin access.
+Domain DNS instructions are recorded in the workflow summary; Porkbun DNS changes remain manual.

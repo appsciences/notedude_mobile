@@ -34,6 +34,7 @@ jobs:
         run: |
           bash -n scripts/bootstrap-firebase.sh
           node --check scripts/hosting-smoke.mjs
+          node --check scripts/provision-hosting.mjs
       - run: npx playwright install --with-deps chromium
       # Playwright builds the production bundle before running its browser tests.
       - run: npm run test:e2e
@@ -105,6 +106,10 @@ jobs:
         with:
           name: ideadude-${{ github.sha }}
           path: pwa/dist
+      - name: Install deployment dependencies
+        run: npm ci --ignore-scripts
+      - name: Prepare dedicated Hosting site and domain
+        run: node scripts/provision-hosting.mjs
       - name: Deploy the tested artifact
         id: publish
         run: |
