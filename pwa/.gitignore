@@ -1,0 +1,9 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.firebase/
+.firebaserc
+# Google Actions' temporary credentials must never be committed.
+gha-creds-*.json
+firebase-debug.log

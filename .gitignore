@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Google Actions' temporary deployment credentials.
+gha-creds-*.json

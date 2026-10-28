@@ -1,5 +1,14 @@
 # NoteDude Mobile
 
+## iPhone voice PWA (React)
+
+The installable React PWA is in [`pwa/`](pwa/README.md). It opens directly into voice
+capture and sends recordings to the existing NoteDude MCP service. See the
+[SpecDD specification](docs/specs/002-iphone-voice-pwa.md) for requirements, test
+coverage, iPhone constraints, and release gates. The Flutter client below is retained.
+
+## Flutter companion
+
 Android-first companion to [NoteDude](https://notedude2.web.app), focused on the two jobs that the web/Google apps do not handle well:
 
 1. capture a note or task by voice without stopping at pauses, while retaining the original recording; and

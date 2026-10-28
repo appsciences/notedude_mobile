@@ -1,0 +1,139 @@
+name: Voice PWA
+
+on:
+  pull_request:
+    paths:
+      - "pwa/**"
+      - "docs/specs/002-iphone-voice-pwa.md"
+      - ".github/workflows/pwa.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test production PWA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Validate deployment scripts
+        run: |
+          bash -n scripts/bootstrap-firebase.sh
+          node --check scripts/hosting-smoke.mjs
+          node --check scripts/provision-hosting.mjs
+      - run: npx playwright install --with-deps chromium
+      # Playwright builds the production bundle before running its browser tests.
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ideadude-${{ github.sha }}
+          path: pwa/dist/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pwa-test-results
+          path: pwa/test-results/
+
+  deploy:
+    name: Deploy IdeaDude to Firebase
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: firebase
+      url: https://ideadude.notedude.dev
+    # Never overlap releases or cancel a release halfway through deployment.
+    concurrency:
+      group: ideadude-firebase-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: pwa
+    env:
+      FIREBASE_PROJECT_ID: notedude2
+      FIREBASE_HOSTING_SITE: notedude2-ideadude
+      GOOGLE_CLOUD_PROJECT: notedude2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select deployment identity
+        id: identity
+        env:
+          WIF_PROVIDER: ${{ vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
+          DEPLOY_SERVICE_ACCOUNT: ${{ vars.FIREBASE_DEPLOY_SERVICE_ACCOUNT }}
+          CREDENTIALS_B64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_B64 }}
+        run: |
+          if [ -n "$WIF_PROVIDER" ] && [ -n "$DEPLOY_SERVICE_ACCOUNT" ]; then
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+          elif [ -n "$CREDENTIALS_B64" ]; then
+            umask 077
+            printf '%s' "$CREDENTIALS_B64" | base64 --decode > "$RUNNER_TEMP/ideadude-service-account.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/ideadude-service-account.json" >> "$GITHUB_ENV"
+            echo "mode=key" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Configure keyless identity variables or the GOOGLE_APPLICATION_CREDENTIALS_B64 secret in the firebase GitHub environment. See pwa/docs/firebase-deployment.md."
+            exit 1
+          fi
+      - uses: google-github-actions/auth@v3
+        if: steps.identity.outputs.mode == 'oidc'
+        with:
+          workload_identity_provider: ${{ vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.FIREBASE_DEPLOY_SERVICE_ACCOUNT }}
+          project_id: notedude2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ideadude-${{ github.sha }}
+          path: pwa/dist
+      - name: Install deployment dependencies
+        run: npm ci --ignore-scripts
+      - name: Prepare dedicated Hosting site and domain
+        run: node scripts/provision-hosting.mjs
+      - name: Deploy the tested artifact
+        id: publish
+        run: |
+          latest_sha=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$latest_sha" != "$GITHUB_SHA" ]; then
+            echo "::notice::A newer main commit exists; skip publishing this superseded build."
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          npx --yes firebase-tools@15.34.1 target:apply hosting mobile "$FIREBASE_HOSTING_SITE" --project "$FIREBASE_PROJECT_ID" --non-interactive
+          npx --yes firebase-tools@15.34.1 deploy --only hosting:mobile --project "$FIREBASE_PROJECT_ID" --non-interactive --message "$GITHUB_SHA"
+          echo "deployed=true" >> "$GITHUB_OUTPUT"
+      - name: Verify live app and MCP routing
+        if: steps.publish.outputs.deployed == 'true'
+        run: node scripts/hosting-smoke.mjs "https://$FIREBASE_HOSTING_SITE.web.app"
+      - name: Record release
+        if: steps.publish.outputs.deployed == 'true'
+        run: |
+          {
+            echo "### IdeaDude deployed"
+            echo "Commit: $GITHUB_SHA"
+            echo "Firebase URL: https://$FIREBASE_HOSTING_SITE.web.app"
+            echo "Custom domain: https://ideadude.notedude.dev (requires completed DNS and TLS setup)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary service-account key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ideadude-service-account.json"

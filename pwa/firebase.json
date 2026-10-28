@@ -1,0 +1,35 @@
+{
+  "hosting": {
+    "target": "mobile",
+    "public": "dist",
+    "ignore": ["**/.*"],
+    "rewrites": [
+      {
+        "source": "/mcp",
+        "function": { "functionId": "notedudeMcp", "region": "us-central1" }
+      },
+      {
+        "source": "/oauth/**",
+        "function": { "functionId": "notedudeMcp", "region": "us-central1" }
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "Referrer-Policy", "value": "no-referrer" },
+          { "key": "Permissions-Policy", "value": "microphone=(self)" },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+          }
+        ]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}
