@@ -1,0 +1,41 @@
+name: Voice PWA
+on:
+  pull_request:
+    paths:
+      [
+        "pwa/**",
+        "docs/specs/002-iphone-voice-pwa.md",
+        ".github/workflows/pwa.yml",
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        "pwa/**",
+        "docs/specs/002-iphone-voice-pwa.md",
+        ".github/workflows/pwa.yml",
+      ]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pwa-test-results
+          path: pwa/test-results/
