@@ -3,9 +3,17 @@ import {appendFile} from 'node:fs/promises';
 const project='notedude2', site='notedude2-ideadude', domain='ideadude.notedude.dev';
 const auth=new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']});
 const client=await auth.getClient();
+console.log('Deployment principal: '+(client.email || 'federated service account'));
 async function api(path,method='GET',data){
  try { return (await client.request({url:'https://firebasehosting.googleapis.com/v1beta1/'+path,method,data})).data; }
- catch(error){const failure=new Error(`Firebase Hosting API returned HTTP ${error.response?.status ?? 'unknown'} for ${method} ${path}`);failure.status=error.response?.status;throw failure;}
+ catch(error){
+  // Only Google API's public error description; never log the SDK error/request or auth headers.
+  const detail=error.response?.data?.error;
+  const reasons=(detail?.details || []).filter(d=>d['@type']==='type.googleapis.com/google.rpc.ErrorInfo').map(d=>({reason:d.reason,permission:d.metadata?.permission,service:d.metadata?.service,consumer:d.metadata?.consumer}));
+  const failure=new Error(`Firebase Hosting API returned HTTP ${error.response?.status ?? 'unknown'} for ${method} ${path}. ${detail?.message || ''} ${JSON.stringify(reasons)}`);
+  failure.status=error.response?.status;throw failure;
+ }
+
 }
 async function ensure(path,createPath){
  try{return await api(path);}catch(error){if(error.status!==404)throw error;return api(createPath,'POST',{});}
