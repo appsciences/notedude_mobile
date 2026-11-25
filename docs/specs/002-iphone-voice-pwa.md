@@ -2,7 +2,7 @@
 
 Status: Draft specification; implementation candidate in `pwa/`.
 
-Last updated: 2026-10-27
+Last updated: 2026-11-25
 
 ## Goal
 
@@ -29,10 +29,12 @@ an independent client. Requirements use MUST for acceptance criteria and SHOULD 
 - The service currently requires `users/{uid}.plan == "paid"` for audio-only uploads.
   Supplying a transcript skips OpenAI calls and works on the free plan. The PWA MUST NOT
   change entitlements, imply server transcription is free, or ship an OpenAI key.
-- The current server transcription default is `gpt-transcribe`. Before release, the deployment
-  owner MUST verify a valid enabled model identifier; `gpt-4o-mini-transcribe` is the initial
-  low-cost candidate. Model availability, current pricing and live deployment parameters
-  have not been verified. A ChatGPT subscription is separate from OpenAI API billing.
+- The current server transcription default is `gpt-transcribe`. OpenAI's API reference listed
+  it as a current transcription model on 2026-11-25, while `gpt-4o-mini-transcribe`,
+  `gpt-4o-transcribe` and `whisper-1` were marked deprecated with shutdown on 2027-02-26, so
+  `gpt-4o-mini-transcribe` is no longer a release candidate. Before release, the deployment
+  owner MUST still confirm the model is enabled for the project's API key, and check pricing
+  and live deployment parameters. A ChatGPT subscription is separate from OpenAI API billing.
 
 ## User journey
 
@@ -185,6 +187,22 @@ Candidate validation on 2026-10-27: production Vite build passed; 5 Node unit/in
 tests passed; 11 Playwright Chromium E2E tests passed. The opt-in live transcription test
 was skipped because testing-service credentials are not configured. No physical iPhone
 QA or Firebase deployment has been performed. CI runs the same local and browser checks.
+
+Release gate 1 on `main` at `1cc185b` (CI run 40647205804, 2026-10-28): `npm test` passed
+(Node unit/integration suites in `test/*.test.mjs`), the deployment-script checks passed, and
+`npm run test:e2e` built the production bundle and passed 11 of 11 Playwright Chromium tests
+(E-01 to E-08, E-07a/b/c and the MCP transport-failure case). The live transcription test
+(L-01) was not run.
+
+Release gate status on 2026-11-25:
+
+| Gate | Status | What is left |
+| --- | --- | --- |
+| 1. Unit and E2E tests on the production build | Passed on `1cc185b`, recorded above | Re-run after any change to `pwa/` |
+| 2. Physical iPhone QA (M-01) | Not done | Needs a real iPhone in Safari |
+| 3. MCP version, OAuth callback, model, paid entitlement, spend limits, L-01 | Not verified | Needs the deployment owner's Firebase, OpenAI and test accounts |
+| 4. Hosting target, project and credentials | Site `notedude2-ideadude` exists; the custom domain was still `PREPARING` | The deploy principal `firebase-adminsdk-fbsvc@notedude-mcp.iam.gserviceaccount.com` lacks Service Usage Consumer and Hosting deploy rights on project `notedude2`, so every `main` deploy has failed since 2026-10-28; confirm `notedudeMcp` runs in `notedude2`, since Hosting rewrites only reach functions in the same project |
+| 5. Deploy after gates 2 and 3 | Blocked by gate 4 | The `deploy` job runs on every push to `main`, so once gate 4 is fixed the next push deploys before gates 2 and 3 unless the `firebase` environment requires approval |
 
 ## Deployment specification: IdeaDude
 
